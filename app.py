@@ -1,75 +1,73 @@
-import json, os, datetime, hashlib
-from flask import Flask, request, redirect, session
+import os, base64
+from flask import Flask, request, redirect
+from datetime import datetime
+
 app = Flask(__name__)
-app.secret_key = "granada2026"
-USERS="usuarios.json"
-POSTS="posts.json"
-CLAVE_ADMIN="GranadaPro2026"
-def load(f,d):
-    if os.path.exists(f):
-        try:
-            with open(f,'r') as x: return json.load(x)
-        except: pass
-    return d
-def save(f,d):
-    with open(f,'w') as x: json.dump(d,x,indent=2)
-users=load(USERS,[])
-posts=load(POSTS,[{"user":"instagranada","img":"https://images.unsplash.com/photo-1533105079780-92b9be482077?w=800","text":"Bienvenidos a Instagranada 🔥"}])
-CSS="<style>body{background:#000;color:#fff;font-family:Arial;margin:0} .box{max-width:400px;margin:30px auto;background:#111;padding:20px;border:1px solid #333} input{width:100%;padding:12px;margin:8px 0;background:#222;border:1px solid #444;color:#fff} button{width:100%;padding:12px;background:#0095f6;color:#fff;border:0;font-weight:bold} a{color:#0095f6}</style>"
-@app.route("/usuarios.json")
-def ver_json():
-    if request.args.get("clave") != CLAVE_ADMIN:
-        return "403 Acceso denegado - pon ?clave=GranadaPro2026", 403
-    return open(USERS).read() if os.path.exists(USERS) else "[]", 200, {'Content-Type':'application/json'}
-@app.route("/admin")
-def admin():
-    if request.args.get("clave") != CLAVE_ADMIN:
-        return "<h1>403</h1> Solo admin con clave", 403
-    u=load(USERS,[])
-    h=f"<h1>Panel Admin ({len(u)} usuarios)</h1><a href='/'>Volver</a><hr>"
-    for i in u[::-1]:
-        h+=f"<div style='background:#111;margin:10px;padding:10px;border:1px solid #333'><b>{i.get('user')}</b> - {i.get('email')}<br>IP:{i.get('ip')} - {i.get('fecha')}<br>Hash:{i.get('pwd')[:25]}...</div>"
-    return h
-@app.route("/", methods=["GET","POST"])
-def home():
-    global posts
-    if "user" not in session: return redirect("/login")
-    if request.method=="POST":
-        img=request.form.get("img","").strip()
-        text=request.form.get("text","").strip()
-        if not img: img="https://images.unsplash.com/photo-1533105079780-92b9be482077?w=800"
-        posts.insert(0,{"user":session["user"],"img":img,"text":text})
-        save(POSTS,posts)
-    html=CSS+f"<div class='box'><h2>Feed - {session['user']} <a href='/logout'>Salir</a></h2><form method=post><input name=img placeholder='URL foto'><input name=text placeholder='Que pasa en Granada?'><button>Publicar</button></form><hr>"
-    for p in posts:
-        html+=f"<div style='border:1px solid #333;margin:15px 0'><b>{p['user']}</b><br><img src='{p['img']}' style='width:100%'><p>{p['text']}</p></div>"
-    html+=f"<p><a href='/admin?clave={CLAVE_ADMIN}'>Panel Admin (solo tu)</a></p></div>"
+UPLOAD_FOLDER = 'static/uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+posts = []
+
+HTML = """
+<!DOCTYPE html>
+<html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{margin:0;font-family:Arial;background:#000;color:#fff}
+.header{position:sticky;top:0;background:#000;border-bottom:1px solid #333;padding:12px;text-align:center;font-weight:bold;font-size:20px}
+.story-bar{display:flex;overflow-x:auto;padding:10px;gap:15px;border-bottom:1px solid #222}
+.story{text-align:center;font-size:12px}
+.story img{width:60px;height:60px;border-radius:50%;border:2px solid #ff006a;object-fit:cover}
+.upload-box{background:#111;border:1px solid #333;margin:10px;padding:15px;border-radius:10px}
+.upload-box input, .upload-box textarea{width:100%;margin:5px 0;padding:10px;background:#222;color:#fff;border:1px solid #444;border-radius:8px}
+.btn{background:#0095f6;color:#fff;border:0;padding:10px 20px;border-radius:8px;font-weight:bold;width:100%}
+.post{border-bottom:1px solid #222;padding-bottom:10px}
+.post img.post-img{width:100%;max-height:500px;object-fit:cover}
+.post-head{padding:10px;display:flex;align-items:center;gap:10px}
+.post-head img{width:32px;height:32px;border-radius:50%}
+.post-text{padding:0 10px 10px}
+</style></head><body>
+<div class="header">IstaGranada 📸</div>
+<div class="story-bar">
+<div class="story"><img src="https://images.unsplash.com/photo-1539037116277-4db20889f2d4"><br>Alhambra</div>
+<div class="story"><img src="https://images.unsplash.com/photo-1499856871958-5b9627545d1a"><br>Albaicin</div>
+<div class="story"><img src="https://images.unsplash.com/photo-1516483638261-f4dbaf036963"><br>Sacromonte</div>
+</div>
+<div class="upload-box">
+<h3>📸 Subir contenido nuevo</h3>
+<form method="POST" enctype="multipart/form-data" action="/upload">
+<input type="text" name="user" placeholder="Tu usuario (ej: cesar_grx)" required>
+<textarea name="caption" placeholder="Escribe algo sobre Granada..."></textarea>
+<input type="file" name="photo" accept="image/*" required>
+<button class="btn">Publicar</button>
+</form>
+</div>
+POSTS
+</body></html>
+"""
+
+def render_posts():
+    if not posts:
+        return '<p style="text-align:center;color:#777;padding:20px">Aún no hay publicaciones. ¡Sube la primera!</p>'
+    html=""
+    for p in reversed(posts):
+        html+=f'<div class="post"><div class="post-head"><img src="https://i.pravatar.cc/100?u={p["user"]}"><b>{p["user"]}</b></div><img class="post-img" src="{p["img"]}"><div class="post-text">{p["caption"]}<br><small style="color:#777">{p["time"]}</small></div></div>'
     return html
-@app.route("/login", methods=["GET","POST"])
-def login():
-    if request.method=="POST":
-        u=request.form.get("user","").strip(); p=request.form.get("pwd","")
-        h=hashlib.sha256(p.encode()).hexdigest()
-        for x in load(USERS,[]):
-            if x["user"]==u and x["pwd"]==h:
-                session["user"]=u
-                return redirect("/")
-        return CSS+"<div class='box'><h3>Error login</h3><a href='/login'>Volver</a></div>"
-    return CSS+"<div class='box'><h2>Instagranada</h2><form method=post><input name=user placeholder=Usuario><input name=pwd type=password placeholder=Contraseña><button>Entrar</button></form><a href='/register'>Registrarse</a></div>"
-@app.route("/register", methods=["GET","POST"])
-def register():
-    if request.method=="POST":
-        u=request.form.get("user","").strip(); e=request.form.get("email","").strip(); p=request.form.get("pwd","")
-        if not u or not p: return "Falta dato"
-        us=load(USERS,[])
-        if any(x["user"]==u for x in us): return "Usuario existe"
-        us.append({"user":u,"email":e,"pwd":hashlib.sha256(p.encode()).hexdigest(),"ip":request.headers.get('X-Forwarded-For',request.remote_addr),"fecha":datetime.datetime.now().strftime("%d/%m %H:%M:%S")})
-        save(USERS,us)
-        return redirect("/login")
-    return CSS+"<div class='box'><h2>Registro</h2><form method=post><input name=user placeholder=Usuario><input name=email placeholder=Email><input name=pwd type=password placeholder=Pass><button>Registrar</button></form><a href='/login'>Login</a></div>"
-@app.route("/logout")
-def logout():
-    session.pop("user",None)
-    return redirect("/login")
-if __name__=="__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT",5000)))
+
+@app.route('/')
+def home():
+    return HTML.replace('POSTS', render_posts())
+
+@app.route('/upload', methods=['POST'])
+def upload():
+    user = request.form.get('user','anon')
+    caption = request.form.get('caption','')
+    file = request.files.get('photo')
+    if file:
+        filename = datetime.now().strftime("%Y%m%d%H%M%S_") + file.filename
+        path = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(path)
+        posts.append({"user":user,"caption":caption,"img":f"/{path}","time":datetime.now().strftime("%H:%M")})
+    return redirect('/')
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=10000)
