@@ -1,73 +1,65 @@
-import os, base64
-from flask import Flask, request, redirect
-from datetime import datetime
+import os
+from flask import Flask, render_template_string, request, redirect, session
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-UPLOAD_FOLDER = 'static/uploads'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.secret_key = "istagranada-2024"
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL','sqlite:///ista.db').replace("postgres://","postgresql://")
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
 
-posts = []
+class User(db.Model):
+    id=db.Column(db.Integer,primary_key=True)
+    username=db.Column(db.String(80),unique=True)
+    password=db.Column(db.String(200))
 
-HTML = """
-<!DOCTYPE html>
-<html><head><meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-body{margin:0;font-family:Arial;background:#000;color:#fff}
-.header{position:sticky;top:0;background:#000;border-bottom:1px solid #333;padding:12px;text-align:center;font-weight:bold;font-size:20px}
-.story-bar{display:flex;overflow-x:auto;padding:10px;gap:15px;border-bottom:1px solid #222}
-.story{text-align:center;font-size:12px}
-.story img{width:60px;height:60px;border-radius:50%;border:2px solid #ff006a;object-fit:cover}
-.upload-box{background:#111;border:1px solid #333;margin:10px;padding:15px;border-radius:10px}
-.upload-box input, .upload-box textarea{width:100%;margin:5px 0;padding:10px;background:#222;color:#fff;border:1px solid #444;border-radius:8px}
-.btn{background:#0095f6;color:#fff;border:0;padding:10px 20px;border-radius:8px;font-weight:bold;width:100%}
-.post{border-bottom:1px solid #222;padding-bottom:10px}
-.post img.post-img{width:100%;max-height:500px;object-fit:cover}
-.post-head{padding:10px;display:flex;align-items:center;gap:10px}
-.post-head img{width:32px;height:32px;border-radius:50%}
-.post-text{padding:0 10px 10px}
-</style></head><body>
-<div class="header">IstaGranada 📸</div>
-<div class="story-bar">
-<div class="story"><img src="https://images.unsplash.com/photo-1539037116277-4db20889f2d4"><br>Alhambra</div>
-<div class="story"><img src="https://images.unsplash.com/photo-1499856871958-5b9627545d1a"><br>Albaicin</div>
-<div class="story"><img src="https://images.unsplash.com/photo-1516483638261-f4dbaf036963"><br>Sacromonte</div>
-</div>
-<div class="upload-box">
-<h3>📸 Subir contenido nuevo</h3>
-<form method="POST" enctype="multipart/form-data" action="/upload">
-<input type="text" name="user" placeholder="Tu usuario (ej: cesar_grx)" required>
-<textarea name="caption" placeholder="Escribe algo sobre Granada..."></textarea>
-<input type="file" name="photo" accept="image/*" required>
-<button class="btn">Publicar</button>
-</form>
-</div>
-POSTS
-</body></html>
+class Post(db.Model):
+    id=db.Column(db.Integer,primary_key=True)
+    image=db.Column(db.Text)
+    likes=db.Column(db.Integer,default=0)
+
+with app.app_context():
+    db.create_all()
+
+BASE="""
+<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{background:black;color:white;margin:0;font-family:Arial}.header{display:flex;justify-content:space-between;padding:15px;border-bottom:1px solid #222}.logo{font-style:italic;font-family:cursive;font-size:28px}a{color:white;text-decoration:none;margin-left:10px}.btn{background:#0095f6;border:none;color:white;padding:12px;border-radius:8px;width:100%;font-weight:bold;margin-top:10px}.live{background:red;padding:6px 12px;border-radius:20px;font-weight:bold}.post{border:1px solid #222;margin:10px 0}.post img{width:100%}</style></head><body>
+<div class="header"><div class="logo">IstaGranada</div><div>{% if user %}<a href="/live" class="live">LIVE</a><a href="/logout">Salir</a>{% endif %}</div></div>
+<div style="padding:15px;max-width:500px;margin:auto">{{content|safe}}</div></body></html>
 """
 
-def render_posts():
-    if not posts:
-        return '<p style="text-align:center;color:#777;padding:20px">Aún no hay publicaciones. ¡Sube la primera!</p>'
-    html=""
-    for p in reversed(posts):
-        html+=f'<div class="post"><div class="post-head"><img src="https://i.pravatar.cc/100?u={p["user"]}"><b>{p["user"]}</b></div><img class="post-img" src="{p["img"]}"><div class="post-text">{p["caption"]}<br><small style="color:#777">{p["time"]}</small></div></div>'
-    return html
+LIVE="""
+<h2 style="text-align:center">LIVE IstaGranada</h2>
+<video id="myVideo" autoplay muted style="width:100%;background:#222;border-radius:10px;height:300px"></video><br><br>
+<button id="start" class="btn" style="background:red">Iniciar Directo</button>
+<button id="stop" class="btn" style="background:#333;display:none">Terminar</button>
+<p id="box" style="background:#111;padding:10px;border-radius:8px;display:none"></p>
+<hr><h3>Ver directo</h3>
+<input id="peerId" placeholder="Pega ID del directo" style="width:100%;padding:12px;border-radius:8px;background:#111;color:white;border:1px solid #333">
+<button id="join" class="btn" style="background:#00c853">Ver</button>
+<video id="remote" autoplay style="width:100%;background:#222;border-radius:10px;height:300px;margin-top:10px;display:none"></video>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script>
+let peer=new Peer();let myStream;let myId="";peer.on('open',id=>{myId=id});
+document.getElementById('start').onclick=async()=>{
+ myStream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});
+ document.getElementById('myVideo').srcObject=myStream;
+ let b=document.getElementById('box');b.style.display='block';b.innerHTML='Tu ID: <b style=color:#ff3040>'+myId+'</b>';
+ document.getElementById('start').style.display='none';document.getElementById('stop').style.display='block';
+}
+document.getElementById('stop').onclick=()=>{myStream.getTracks().forEach(t=>t.stop());location.reload();}
+peer.on('call',c=>{c.answer(myStream);});
+document.getElementById('join').onclick=async()=>{
+ let rid=document.getElementById('peerId').value;if(!rid)return alert('Pega ID');
+ let s=await navigator.mediaDevices.getUserMedia({video:true,audio:true});
+ let call=peer.call(rid,s);call.on('stream',ms=>{let v=document.getElementById('remote');v.style.display='block';v.srcObject=ms;});
+}
+</script>
+"""
 
 @app.route('/')
-def home():
-    return HTML.replace('POSTS', render_posts())
-
-@app.route('/upload', methods=['POST'])
-def upload():
-    user = request.form.get('user','anon')
-    caption = request.form.get('caption','')
-    file = request.files.get('photo')
-    if file:
-        filename = datetime.now().strftime("%Y%m%d%H%M%S_") + file.filename
-        path = os.path.join(UPLOAD_FOLDER, filename)
-        file.save(path)
-        posts.append({"user":user,"caption":caption,"img":f"/{path}","time":datetime.now().strftime("%H:%M")})
-    return redirect('/')
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
+def index():
+    if 'user' not in session: return redirect('/login')
+    posts=Post.query.order_by(Post.id.desc()).all()
+    c='<form action="/upload" method="post" enctype="multipart/form-data" style="border:1px solid #222;padding:15px;border-radius:10px"><input type="file" name="file" required><button class="btn">Publicar</button
